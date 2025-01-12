@@ -1,4 +1,4 @@
-FROM node:16.13.2-alpine AS BUILD_IMAGE
+FROM node:18.19.1-alpine AS BUILD_IMAGE
 
 # Set the platform to build image for
 ARG TARGETPLATFORM
@@ -16,39 +16,36 @@ WORKDIR /app
 
 # Install app dependencies
 COPY package.json yarn.lock ./
-RUN yarn install --frozen-lockfile --network-timeout 1000000
+RUN yarn install --ignore-engines --immutable --no-cache --network-timeout 300000 --network-concurrency 1
 
 # Copy over all project files and folders to the working directory
 COPY . ./
 
 # Build initial app for production
-RUN yarn build
+RUN yarn build --mode production --no-clean
 
 # Production stage
-FROM node:16.13.2-alpine
+FROM node:20.11.1-alpine3.19
 
 # Define some ENV Vars
-ENV PORT=80 \
+ENV PORT=8080 \
   DIRECTORY=/app \
   IS_DOCKER=true
 
 # Create and set the working directory
 WORKDIR ${DIRECTORY}
 
-# Install tini for initialization and tzdata for setting timezone
-RUN apk add --no-cache tzdata tini
+# Update tzdata for setting timezone
+RUN apk add --no-cache tzdata
 
 # Copy built application from build phase
 COPY --from=BUILD_IMAGE /app ./
-# Ensure only one version of conf.yml exists
-RUN rm dist/conf.yml
 
 # Finally, run start command to serve up the built application
-ENTRYPOINT [ "/sbin/tini", "--" ]
 CMD [ "yarn", "build-and-start" ]
 
 # Expose the port
 EXPOSE ${PORT}
 
 # Run simple healthchecks every 5 mins, to check that everythings still great
-HEALTHCHECK --interval=5m --timeout=2s --start-period=30s CMD yarn health-check
+HEALTHCHECK --interval=5m --timeout=5s --start-period=30s CMD yarn health-check

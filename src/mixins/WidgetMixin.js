@@ -72,9 +72,11 @@ const WidgetMixin = {
       this.updater = setInterval(() => { this.update(); }, this.updateInterval);
     },
     /* Called when an error occurs. Logs to handler, and passes to parent component */
-    error(msg, stackTrace) {
+    error(msg, stackTrace, quite = false) {
       ErrorHandler(msg, stackTrace);
-      this.$emit('error', msg);
+      if (!this.options.ignoreErrors && !quite) {
+        this.$emit('error', msg);
+      }
     },
     /* When a data request update starts, show loader */
     startLoading() {
@@ -128,6 +130,19 @@ const WidgetMixin = {
             this.finishLoading();
           });
       });
+    },
+    /* Check if a value is an environment variable, return its value if so. */
+    parseAsEnvVar(str) {
+      if (typeof str !== 'string') return str;
+      if (str.includes('VUE_APP_')) {
+        const envVar = process.env[str];
+        if (!envVar) {
+          this.error(`Environment variable ${str} not found`);
+        } else {
+          return envVar;
+        }
+      }
+      return str;
     },
   },
 };

@@ -9,21 +9,22 @@
       :target="anchorTarget"
       :class="`item ${makeClassList}`"
       v-tooltip="getTooltipOptions()"
-      rel="noopener noreferrer" tabindex="0"
+      :rel="`${item.rel || 'noopener noreferrer'}`"
+      tabindex="0"
       :id="`link-${item.id}`"
       :style="customStyle"
     >
       <!-- Item Text -->
-      <div :class="`tile-title  ${!item.icon? 'bounce no-icon': ''}`" :id="`tile-${item.id}`" >
+      <div :class="`tile-title  ${!itemIcon? 'bounce no-icon': ''}`" :id="`tile-${item.id}`" >
         <span class="text">{{ item.title }}</span>
         <p class="description">{{ item.description }}</p>
       </div>
       <!-- Item Icon -->
-      <Icon :icon="item.icon" :url="item.url" :size="size" :color="item.color"
+      <Icon :icon="itemIcon" :url="item.url" :size="size" :color="item.color"
         v-bind:style="customStyles" class="bounce" />
       <!-- Small icon, showing opening method on hover -->
       <ItemOpenMethodIcon class="opening-method-icon"
-        :isSmall="!item.icon || size === 'small'"
+        :isSmall="!itemIcon || size === 'small'"
         :openingMethod="accumulatedTarget"  position="bottom right"
         :hotkey="item.hotkey" />
       <!-- Status indicator dot (if enabled) showing weather service is available -->
@@ -33,6 +34,8 @@
         :statusSuccess="statusResponse ? statusResponse.successStatus : undefined"
         :statusText="statusResponse ? statusResponse.message : undefined"
       />
+      <!-- URL of the item (shown on hover, only on some themes) -->
+      <p class="item-url">{{ item.url | shortUrl }}</p>
       <!-- Edit icon (displayed only when in edit mode) -->
       <EditModeIcon v-if="isEditMode" class="edit-mode-item" @click="openItemSettings()" />
     </a>
@@ -65,7 +68,6 @@ import MoveItemTo from '@/components/InteractiveEditor/MoveItemTo';
 import ContextMenu from '@/components/LinkItems/ItemContextMenu';
 import StoreKeys from '@/utils/StoreMutations';
 import ItemMixin from '@/mixins/ItemMixin';
-// import { targetValidator } from '@/utils/ConfigHelpers';
 import EditModeIcon from '@/assets/interface-icons/interactive-editor-edit-mode.svg';
 import { modalNames } from '@/utils/defaults';
 
@@ -89,6 +91,10 @@ export default {
     EditModeIcon,
   },
   computed: {
+    /* Returns either item.icon, or appConfig.defaultIcon, or null */
+    itemIcon() {
+      return this.item.icon || this.$store.getters.appConfig?.defaultIcon;
+    },
     makeColumnCount() {
       if ((this.sectionDisplayData || {}).itemCountX) return this.sectionDisplayData.itemCountX;
       if (this.sectionWidth < 380) return 1;
@@ -101,8 +107,7 @@ export default {
     /* Based on item props, adjust class names */
     makeClassList() {
       const { isAddNew, isEditMode, size } = this;
-      const { icon } = this.item;
-      return `size-${size} ${!icon ? 'short' : ''} `
+      return `size-${size} ${!this.itemIcon ? 'short' : ''} `
         + `${isAddNew ? 'add-new' : ''} ${isEditMode ? 'is-edit-mode' : ''}`;
     },
     /* Used by certain themes (material), to show animated CSS icon */
@@ -116,6 +121,26 @@ export default {
         case 'workspace': return '"\\f0b1"';
         case 'clipboard': return '"\\f0ea"';
         default: return '"\\f054"';
+      }
+    },
+  },
+  filters: {
+    shortUrl(value) {
+      if (!value || typeof value !== 'string') {
+        return '';
+      }
+      try {
+        // Use URL constructor to parse the input
+        const url = new URL(value);
+        return url.hostname;
+      } catch (e) {
+        // If the input is not a valid URL, try to handle it as an IP address
+        const ipPattern = /^(\d{1,3}\.){3}\d{1,3}/;
+        const match = value.match(ipPattern);
+        if (match) {
+          return match[0];
+        }
+        return '';
       }
     },
   },
@@ -172,11 +197,17 @@ export default {
   },
   mounted() {
     // If ststus checking is enabled, then check service status
-    if (this.enableStatusCheck) this.checkWebsiteStatus();
-    // If continious status checking is enabled, then start ever-lasting loop
-    if (this.statusCheckInterval > 0) {
-      setInterval(this.checkWebsiteStatus, this.statusCheckInterval * 1000);
+    if (this.enableStatusCheck) {
+      this.checkWebsiteStatus();
+      // If continious status checking is enabled, then start ever-lasting loop
+      if (this.statusCheckInterval > 0) {
+        this.intervalId = setInterval(this.checkWebsiteStatus, this.statusCheckInterval * 1000);
+      }
     }
+  },
+  beforeDestroy() {
+    // Stop periodic status-check when item is destroyed (e.g. navigating in multi-page setup)
+    if (this.intervalId) clearInterval(this.intervalId);
   },
 };
 </script>
@@ -199,6 +230,9 @@ export default {
     &.span-6 { min-width: 16%; }
     &.span-7 { min-width: 14%; }
     &.span-8 { min-width: 12.5%; }
+  }
+  .item-url {
+    display: none;
   }
 }
 
@@ -247,8 +281,12 @@ export default {
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   word-break: keep-all;
+  overflow: hidden;
   span.text {
     white-space: nowrap;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    display: block;
   }
 }
 
@@ -377,6 +415,7 @@ p.description {
         font-size: .9em;
         line-height: 1rem;
         height: 2rem;
+        overflow: hidden;
       }
     }
   }
